@@ -222,3 +222,17 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 /.idea/
+
+# --- cloud-bigdata-project ---
+deploy/.env
+data/
+spark-apps/target/
+spark-apps/project/target/
+spark-apps/project/project/
+*.class
+.bsp/
+results/raw/**/*.parquet
+results/**/*.tmp
+.metals/
+.bloop/
+spark-apps/project/metals.sbt

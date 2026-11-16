@@ -1,0 +1,21 @@
+# 2 s scrape interval so even the 1 GB runs (tens of seconds) get usable resolution.
+# node-exporter  : host (PC kernel / Docker Desktop VM kernel) CPU, memory, disk I/O; and the sidecar
+#                  netns interfaces (eth0, tailscale0 -> tailscale0 is the PC<->Mac traffic).
+# cAdvisor       : per-container CPU / memory / network / block I/O (separates Spark from Tailscale CPU).
+global:
+  scrape_interval: 2s
+  scrape_timeout: 2s
+
+scrape_configs:
+  - job_name: node
+    static_configs:
+      - targets: ["cb-pc:9100"]
+        labels: {machine: pc}
+      - targets: ["cb-mac:9100"]
+        labels: {machine: mac}
+  - job_name: cadvisor
+    static_configs:
+      - targets: ["cb-pc:8082"]
+        labels: {machine: pc}
+      - targets: ["cb-mac:8082"]
+        labels: {machine: mac}

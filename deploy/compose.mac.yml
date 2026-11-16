@@ -1,0 +1,99 @@
+# Mac node (Docker Desktop, Apple silicon): Tailscale sidecar + DataNode + Spark Worker #2.
+# Docker Desktop settings (Settings > Resources): CPUs >= 8, Memory >= 10-11 GB, disk image >= 150 GB.
+# Keep the Mac plugged in, Low Power Mode off, and run `caffeinate -dimsu` during experiments.
+#
+#   cp deploy/.env.example deploy/.env   # same values as on the PC (needs its own TS_AUTHKEY or a reusable one)
+#   docker compose -f deploy/compose.mac.yml --env-file deploy/.env up -d
+name: compbench-mac
+
+x-node-env: &node-env
+  NODE_HOST: cb-mac
+  MASTER_HOST: cb-pc
+  # In standalone mode the worker's SPARK_LOCAL_DIRS overrides spark.local.dir: pin shuffle/spill to the volume.
+  SPARK_LOCAL_DIRS: /spark-local
+
+x-svc: &svc
+  image: compbench:latest
+  restart: unless-stopped
+  network_mode: "service:tailscale"
+  depends_on:
+    tailscale:
+      condition: service_healthy
+
+services:
+  tailscale:
+    image: ${TS_IMAGE:-tailscale/tailscale:stable}
+    container_name: cb-ts-mac
+    hostname: ts-mac
+    restart: unless-stopped
+    environment:
+      TS_AUTHKEY: ${TS_AUTHKEY}
+      TS_HOSTNAME: cb-mac
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_USERSPACE: "false"
+      TS_ACCEPT_DNS: "false"
+    cap_add: [NET_ADMIN, NET_RAW]
+    devices: ["/dev/net/tun:/dev/net/tun"]
+    extra_hosts:
+      - "cb-pc:${PC_TS_IP}"
+      - "cb-mac:${MAC_TS_IP}"
+    volumes:
+      - ts-state:/var/lib/tailscale
+    healthcheck:
+      test: ["CMD-SHELL", "tailscale ip -4 | grep -q '^100\\.'"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+
+  datanode:
+    <<: *svc
+    container_name: cb-datanode-mac
+    command: ["datanode"]
+    environment: *node-env
+    volumes: ["hdfs-data:/hdfs/data"]   # named volume (never a macOS bind mount)
+
+  spark-worker:
+    <<: *svc
+    container_name: cb-spark-worker-mac
+    command: ["worker"]
+    cpus: 4
+    mem_limit: 8g
+    environment:
+      <<: *node-env
+      WORKER_CORES: "4"
+      WORKER_MEMORY: "6g"
+    volumes: ["spark-local:/spark-local", "spark-work:/spark-work"]
+
+  # ---- monitoring: scraped by the Prometheus on the PC. On the Mac, "host" = the Docker Desktop VM. ----
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    container_name: cb-node-exporter-mac
+    restart: unless-stopped
+    network_mode: "service:tailscale"
+    pid: host
+    command: ["--path.rootfs=/host", "--collector.netdev.device-include=^(eth0|tailscale0)$$"]
+    volumes: ["/:/host:ro,rslave"]
+    depends_on:
+      tailscale: {condition: service_healthy}
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    container_name: cb-cadvisor-mac
+    restart: unless-stopped
+    network_mode: "service:tailscale"
+    privileged: true
+    command: ["--port=8082", "--docker_only=true", "--housekeeping_interval=2s", "--store_container_labels=false",
+              "--whitelisted_container_labels=com.docker.compose.service"]
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    depends_on:
+      tailscale: {condition: service_healthy}
+
+volumes:
+  ts-state:
+  hdfs-data:
+  spark-local:
+  spark-work:

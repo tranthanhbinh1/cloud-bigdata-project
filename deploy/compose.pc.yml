@@ -1,0 +1,172 @@
+# PC node (Linux x86): Tailscale sidecar + NameNode + DataNode + Spark master + Worker #1
+# + history server + client (driver). Every service shares the sidecar's network namespace, so
+# all of them are reachable on the PC's tailnet IP with no port publishing.
+#
+#   cp deploy/.env.example deploy/.env   # then edit
+#   docker compose -f deploy/compose.pc.yml --env-file deploy/.env up -d
+name: compbench-pc
+
+x-node-env: &node-env
+  NODE_HOST: cb-pc
+  MASTER_HOST: cb-pc
+  # In standalone mode the worker's SPARK_LOCAL_DIRS overrides spark.local.dir: pin shuffle/spill to the volume.
+  SPARK_LOCAL_DIRS: /spark-local
+
+x-svc: &svc
+  image: compbench:latest
+  restart: unless-stopped
+  network_mode: "service:tailscale"
+  depends_on:
+    tailscale:
+      condition: service_healthy
+
+services:
+  tailscale:
+    image: ${TS_IMAGE:-tailscale/tailscale:stable}
+    container_name: cb-ts-pc
+    hostname: ts-pc
+    restart: unless-stopped
+    environment:
+      TS_AUTHKEY: ${TS_AUTHKEY}
+      TS_HOSTNAME: cb-pc
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_USERSPACE: "false"
+      TS_ACCEPT_DNS: "false"
+    cap_add: [NET_ADMIN, NET_RAW]
+    devices: ["/dev/net/tun:/dev/net/tun"]
+    # /etc/hosts is shared with every container using this network namespace.
+    extra_hosts:
+      - "cb-pc:${PC_TS_IP}"
+      - "cb-mac:${MAC_TS_IP}"
+    volumes:
+      - ts-state:/var/lib/tailscale
+    healthcheck:
+      test: ["CMD-SHELL", "tailscale ip -4 | grep -q '^100\\.'"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+
+  namenode:
+    <<: *svc
+    container_name: cb-namenode
+    command: ["namenode"]
+    environment: *node-env
+    volumes: ["hdfs-name:/hdfs/name"]
+
+  datanode:
+    <<: *svc
+    container_name: cb-datanode-pc
+    command: ["datanode"]
+    environment: *node-env
+    volumes: ["hdfs-data:/hdfs/data"]
+    depends_on:
+      tailscale: {condition: service_healthy}
+      namenode: {condition: service_started}
+
+  spark-master:
+    <<: *svc
+    container_name: cb-spark-master
+    command: ["master"]
+    environment: *node-env
+
+  spark-worker:
+    <<: *svc
+    container_name: cb-spark-worker-pc
+    command: ["worker"]
+    # Same capacity as the Mac worker -> the two executors are comparable.
+    cpus: 4
+    mem_limit: 8g
+    environment:
+      <<: *node-env
+      WORKER_CORES: "4"
+      WORKER_MEMORY: "6g"
+    volumes: ["spark-local:/spark-local", "spark-work:/spark-work"]
+    depends_on:
+      tailscale: {condition: service_healthy}
+      spark-master: {condition: service_started}
+
+  spark-history:
+    <<: *svc
+    container_name: cb-spark-history
+    command: ["history"]
+    environment: *node-env
+    volumes: ["spark-events:/spark-events"]
+
+  # Idle container used as the Spark driver: `docker exec cb-client spark-submit ...`
+  client:
+    <<: *svc
+    container_name: cb-client
+    command: ["client"]
+    environment: *node-env
+    volumes:
+      - spark-events:/spark-events
+      - ../spark-apps/target:/jars:ro
+      - ../data:/data
+      - ../results:/results
+
+  # ---- monitoring (ports: node-exporter 9100, cAdvisor 8082, Prometheus 9090, Grafana 3000) ----
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    container_name: cb-node-exporter-pc
+    restart: unless-stopped
+    network_mode: "service:tailscale"
+    pid: host
+    command: ["--path.rootfs=/host", "--collector.netdev.device-include=^(eth0|tailscale0)$$"]
+    volumes: ["/:/host:ro,rslave"]
+    depends_on:
+      tailscale: {condition: service_healthy}
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    container_name: cb-cadvisor-pc
+    restart: unless-stopped
+    network_mode: "service:tailscale"
+    privileged: true
+    command: ["--port=8082", "--docker_only=true", "--housekeeping_interval=2s", "--store_container_labels=false",
+              "--whitelisted_container_labels=com.docker.compose.service"]
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    depends_on:
+      tailscale: {condition: service_healthy}
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    container_name: cb-prometheus
+    restart: unless-stopped
+    network_mode: "service:tailscale"
+    command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.path=/prometheus",
+              "--storage.tsdb.retention.time=60d"]
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    depends_on:
+      tailscale: {condition: service_healthy}
+
+  grafana:
+    image: grafana/grafana:11.3.1
+    container_name: cb-grafana
+    restart: unless-stopped
+    network_mode: "service:tailscale"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      tailscale: {condition: service_healthy}
+
+volumes:
+  prometheus-data:
+  grafana-data:
+  ts-state:
+  hdfs-name:
+  hdfs-data:
+  spark-local:
+  spark-work:
+  spark-events:

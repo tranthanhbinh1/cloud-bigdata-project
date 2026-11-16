@@ -1,0 +1,22 @@
+# Single-machine smoke test WITHOUT Tailscale (no auth key needed).
+# Replaces the sidecar with an idle container that just owns the network namespace and maps
+# both logical hostnames to localhost. Only the PC-side services run, so you get 1 worker.
+#
+#   docker compose -f deploy/compose.pc.yml -f deploy/compose.pc.local.yml up -d
+name: compbench-pc
+
+services:
+  tailscale:
+    image: alpine:3.20
+    command: ["sleep", "infinity"]
+    environment: !reset {}
+    cap_add: !reset []
+    devices: !reset []
+    volumes: !reset []
+    extra_hosts: !override
+      - "cb-pc:127.0.0.1"
+      - "cb-mac:127.0.0.1"
+    healthcheck:
+      test: ["CMD", "true"]
+      interval: 2s
+      retries: 3
