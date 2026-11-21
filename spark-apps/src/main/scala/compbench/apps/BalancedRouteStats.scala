@@ -2,26 +2,19 @@ package compbench.apps
 
 import compbench.common.JobArgs
 import org.apache.spark.sql.SparkSession
+import org.apache.spark.sql.functions._
 
 /** App 3 — BALANCED CPU / I/O.
   *
-  * Goal: significant computation AND significant data movement, with neither resource dominating.
+  * Real computation AND real data movement:
+  *   1. per-route statistics: groupBy (pickup zone, dropoff zone, hour) -> count, avg/stddev of duration,
+  *      median duration, avg fare  (aggregation + percentile = CPU)
+  *   2. join the statistics back onto every trip (sort-merge join: the baseline config disables broadcast
+  *      joins) and compute each trip's deviation from its route average  (shuffle of all trips + sort = I/O + CPU)
+  *   3. write the per-trip deviations
   *
-  * Suggested logic:
-  *   1. read the dataset                                                      (args.input)
-  *   2. route statistics: groupBy (pu_location_id, do_location_id, pickup_hour) and compute
-  *        count, avg/stddev of trip_duration_s, avg fare, and approximate percentiles
-  *        (e.g. percentile_approx(trip_duration_s, array(0.5, 0.9, 0.99)))
-  *   3. join those statistics BACK to the individual trips (sort-merge join — the config already sets
-  *      spark.sql.autoBroadcastJoinThreshold=-1, so no broadcast) and compute, for every trip,
-  *      its deviation from its route average (duration - avg_duration, fare / avg_fare, ...)
-  *   4. write the enriched trips as Parquet                                   (args.output)
-  *
-  * Expected profile (Phase-4 characterization gate, 5 GB / config C0):
-  *   - substantial CPU (aggregation + sort + join) AND substantial shuffle volume
-  *   - neither CPU nor disk/network pinned at saturation
-  *
-  * Rules: don't set any compression option here. Codecs are injected with --conf at submit time.
+  * Expected profile: substantial CPU and substantial shuffle, neither pinned at saturation.
+  * No compression option is set here: codecs are injected with `--conf` at submit time.
   */
 object BalancedRouteStats {
   def main(argv: Array[String]): Unit = {
@@ -29,12 +22,23 @@ object BalancedRouteStats {
     val spark = SparkSession.builder().appName(s"A3-balanced-${args.runId}").getOrCreate()
 
     val trips = spark.read.parquet(args.input)
+    val route = Seq("pu_location_id", "do_location_id", "pickup_hour")
 
-    // TODO(you): route stats -> join back -> per-trip deviation -> write to args.output
-    //   val stats    = trips.groupBy(...).agg(...)
-    //   val enriched = trips.join(stats, Seq(...)).withColumn(...)
-    //   enriched.write.mode("overwrite").parquet(args.output)
-    throw new NotImplementedError("A3 BalancedRouteStats: write the transformation (see the spec above)")
+    val stats = trips.groupBy(route.map(col): _*).agg(
+      count(lit(1)).as("n"),
+      avg("trip_duration_s").as("avg_duration"),
+      stddev("trip_duration_s").as("std_duration"),
+      percentile_approx(col("trip_duration_s"), lit(0.5), lit(1000)).as("median_duration"),
+      avg("fare_amount").as("avg_fare"))
+
+    trips.join(stats, route)
+      .select(
+        col("pickup_date"), col("pu_location_id"), col("do_location_id"), col("pickup_hour"),
+        (col("trip_duration_s") - col("avg_duration")).as("duration_dev"),
+        (col("trip_duration_s") - col("median_duration")).as("duration_dev_median"),
+        // routes whose average fare is 0 exist; Spark 4 runs in ANSI mode, where x / 0 is an error
+        when(col("avg_fare") > 0, col("fare_amount") / col("avg_fare")).as("fare_ratio"))
+      .write.mode("overwrite").parquet(args.output)
 
     spark.stop()
   }

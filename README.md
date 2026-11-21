@@ -14,7 +14,7 @@ every container shares its machine's Tailscale sidecar network namespace. Full d
 |---|---|
 | `docker/` | image (Hadoop 3.4.3 + Spark 4.0.5), role entrypoint, HDFS/Spark configs (the pinned baseline) |
 | `deploy/` | `compose.pc.yml`, `compose.mac.yml`, `compose.pc.local.yml` (no-Tailscale smoke test), monitoring (Prometheus/Grafana), scripts |
-| `spark-apps/` | sbt project: `prepare/` (Ingest, Materialize), `apps/` (**your 3 workloads — TODOs**), `codec-bench/` (E0) |
+| `spark-apps/` | sbt project: `prepare/` (Ingest, Materialize), `apps/` (the 3 minimal workloads), `codec-bench/` (E0) |
 | `harness/` | `download_tlc.py` (done); runner / collectors / plots (Phase 5) |
 | `results/` | raw measurements + graphs |
 
@@ -24,7 +24,8 @@ every container shares its machine's Tailscale sidecar network namespace. Full d
 - [x] Phase 3 — `download_tlc.py` (102 months, 8 GB in `data/raw/`), `Ingest`, `Materialize` tested on 3 months;
       codec-bench compiles
 - [ ] Phase 0 — Tailscale spike on the Mac (needs your auth key — see below)
-- [ ] Phase 4 — **you** write the 3 apps in `spark-apps/src/main/scala/compbench/apps/`
+- [x] Phase 4a — the 3 minimal apps in `spark-apps/src/main/scala/compbench/apps/` run on 1 month of data
+- [ ] Phase 4b — characterization gate (confirm each app's CPU/disk/network profile at 5 GB; needs the 2-node cluster)
 - [ ] Phase 5+ — harness, campaign, report
 
 ## Quick start
