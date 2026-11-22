@@ -6,7 +6,8 @@
 # services bind the wildcard, local traffic stays on loopback, and the name `cb-mac` that they advertise to the PC
 # resolves (on the PC) to the Mac's LAN IP.
 #
-# Docker Desktop settings (Settings > Resources): CPUs >= 8, Memory >= 10-11 GB, disk image >= 150 GB.
+# Docker Desktop settings (Settings > Resources): CPUs 6, Memory 10 GB, disk image >= 150 GB. More memory does not
+# help: the VM keeps it as page cache and never returns it, pushing macOS (16 GB) into swap.
 # Keep the Mac plugged in, Low Power Mode off, and run `caffeinate -dimsu` during experiments.
 #
 #   cp deploy/.env.example deploy/.env   # same values as on the PC

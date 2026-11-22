@@ -14,64 +14,64 @@
   "spark.broadcast.compress=false",
   "spark.rdd.compress=false"
  ],
- "app_id": "app-20261122093110-0007",
- "t0": 1795339867.6759784,
- "t1": 1795339919.7986465,
- "wall_s": 52.12,
+ "app_id": "app-20261122160426-0003",
+ "t0": 1795363464.4077036,
+ "t1": 1795363515.415869,
+ "wall_s": 51.01,
  "cpu_host": {
   "pc": {
-   "mean_busy_cores": 8.66,
-   "peak_busy_cores": 16.02
+   "mean_busy_cores": 9.21,
+   "peak_busy_cores": 16.13
   },
   "mac": {
-   "mean_busy_cores": 2.23,
-   "peak_busy_cores": 4.24
+   "mean_busy_cores": 2.16,
+   "peak_busy_cores": 4.05
   }
  },
- "net_pc_lan_tx_mb": 490.8,
- "net_pc_lan_rx_mb": 343.5,
+ "net_pc_lan_tx_mb": 405.7,
+ "net_pc_lan_rx_mb": 374.8,
  "disk_read_mb": {
-  "pc": 784.3,
-  "mac": 319.5
+  "pc": 789.0,
+  "mac": 348.5
  },
  "disk_write_mb": {
-  "pc": 927.8,
-  "mac": 227.4
+  "pc": 883.8,
+  "mac": 13.7
  },
  "eventlog": {
   "tasks": 187,
-  "run_ms": 750702,
-  "cpu_ns": 436797118544,
-  "gc_ms": 2707,
+  "run_ms": 736496,
+  "cpu_ns": 438767438737,
+  "gc_ms": 2279,
   "input_b": 736636134,
-  "output_b": 23073774,
+  "output_b": 23073463,
   "shuf_w_b": 1058598072,
-  "shuf_w_ms": 1907.612805,
-  "shuf_r_remote_b": 738433436,
-  "shuf_r_local_b": 1340434036,
-  "fetch_wait_ms": 213236,
+  "shuf_w_ms": 1672.5138099999995,
+  "shuf_r_remote_b": 674185540,
+  "shuf_r_local_b": 1404681932,
+  "fetch_wait_ms": 201650,
   "spill_b": 0,
   "local": 187,
   "nonlocal_": 0,
   "by_host": {
-   "cb-pc": {
-    "cpu_s": 343.5710496840002,
-    "tasks": 121
-   },
    "cb-mac": {
-    "cpu_s": 93.22606885999996,
-    "tasks": 66
+    "cpu_s": 88.88775498099997,
+    "tasks": 37
+   },
+   "cb-pc": {
+    "cpu_s": 349.8796837560001,
+    "tasks": 150
    }
   }
  },
  "stages": {
-  "stage_wall_total_s": 45.95,
-  "shuffle_map_stage_wall_s": 35.51,
+  "stage_wall_total_s": 45.03,
+  "shuffle_map_stage_wall_s": 36.01,
   "n_stages": 5
  },
  "hdfs_input_bytes": 2624417545,
- "hdfs_output_bytes": 23073774,
+ "hdfs_output_bytes": 23073463,
  "link_airtime_pct": 32.9,
- "git_commit": "68a34f1",
+ "git_commit": "5420153",
  "attempt": 1
 }

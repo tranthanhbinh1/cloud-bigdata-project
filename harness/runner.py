@@ -28,6 +28,9 @@ import re
 import subprocess
 import sys
 import time
+import urllib.error
+import urllib.parse
+import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -43,7 +46,7 @@ C3_PAIRS = [("snappy", "lz4"), ("gzip", "zstd")]
 # rough seconds per nominal GB of input (measured at 5 GB under C0, 4 PC workers + 1 Mac worker) + fixed overhead per run,
 # only for the --dry-run estimate
 SEC_PER_GB = {"IoBoundEtl": 34, "CpuBoundKMeans": 15.5, "BalancedRouteStats": 19}
-OVERHEAD_S = 40
+OVERHEAD_S = 12   # measured: ~9 s between runs (cache flush, waits, bookkeeping) + startup not covered by SEC_PER_GB
 
 
 @dataclass(frozen=True)
@@ -117,10 +120,31 @@ def eventlog_stages(app_id: str) -> dict:
             "n_stages": len(stages)}
 
 
+# HDFS bookkeeping goes through WebHDFS on the NameNode (host network on this PC): ~50 ms per call instead of
+# ~1.2 s for an `hdfs dfs` JVM start inside the client container.
+WEBHDFS = "http://127.0.0.1:9870/webhdfs/v1"
+
+
+def _webhdfs(path: str, op: str, method: str = "GET", **params) -> dict:
+    p = urllib.parse.urlparse(path).path or path          # accept hdfs://host:port/x or /x
+    q = urllib.parse.urlencode({"op": op, "user.name": "root", **params})
+    req = urllib.request.Request(f"{WEBHDFS}{urllib.parse.quote(p)}?{q}", method=method)
+    with urllib.request.urlopen(req, timeout=30) as r:
+        return json.load(r)
+
+
 def hdfs_bytes(path: str) -> int:
-    out = ch.dx("hdfs", "dfs", "-du", "-s", path, check=False)
-    m = re.search(r"^(\d+)", out.strip().splitlines()[-1]) if out.strip() else None
-    return int(m.group(1)) if m else -1
+    try:
+        return int(_webhdfs(path, "GETCONTENTSUMMARY")["ContentSummary"]["length"])
+    except (urllib.error.URLError, KeyError, ValueError):
+        return -1
+
+
+def hdfs_rm(path: str) -> None:
+    try:
+        _webhdfs(path, "DELETE", method="DELETE", recursive="true")   # {"boolean": false} if absent: fine
+    except urllib.error.URLError:
+        pass
 
 
 def assert_cluster() -> None:
@@ -129,15 +153,22 @@ def assert_cluster() -> None:
     expected = sorted(["cb-mac"] + ["cb-pc"] * ch.PC_WORKERS)
     if alive != expected:
         raise RuntimeError(f"cluster not healthy: alive workers = {alive}, expected {expected}")
+    # Monitoring must be ingesting fresh node-exporter samples from both machines, otherwise every CPU / disk / network
+    # metric of the run would silently come back empty (seen after a clock jump made Prometheus reject all samples).
+    fresh = ch.by_machine(ch.prom('(time() - timestamp(up{job="node"})) and (up{job="node"} == 1)', time.time()))
+    stale = [m for m in ch.MACHINES if fresh.get(m, 1e9) > 10]
+    if stale:
+        raise RuntimeError(f"monitoring not healthy: no fresh node-exporter samples from {stale} "
+                           f"(check http://127.0.0.1:9090/targets)")
 
 
 def execute(size, app, cfg, rep, rid) -> dict:
     src, out = dataset_path(size, cfg), f"{ch.HDFS}/tmp/runner/{rid}"
     confs = spark_confs(cfg)
-    ch.dx("hdfs", "dfs", "-rm", "-r", "-f", "-skipTrash", out, check=False)
+    hdfs_rm(out)
     in_bytes = hdfs_bytes(src)
     ch.drop_caches()
-    time.sleep(5)
+    time.sleep(2)   # let the flush settle
     app_args = ["--k", "1024"] if app == "CpuBoundKMeans" else []
     cmd = ["docker", "exec", ch.CLIENT, "spark-submit", "--class", f"compbench.apps.{app}",
            *[x for kv in confs for x in ("--conf", kv)], "/jars/scala-2.13/compbench.jar",
@@ -148,7 +179,7 @@ def execute(size, app, cfg, rep, rid) -> dict:
     if r.returncode:
         raise RuntimeError(f"spark-submit failed:\n{(r.stdout + r.stderr)[-2500:]}")
     app_id = re.search(r"app-\d{14}-\d{4}", r.stdout + r.stderr).group(0)
-    time.sleep(6)
+    time.sleep(4)   # Prometheus scrapes every 2 s: wait for the samples covering the end of the run
     dur = t1 - t0
     pc_tx = ch.counter_delta('node_network_transmit_bytes_total{device="enp7s0",machine="pc"}', t1 + 4, dur).get("pc", 0)
     pc_rx = ch.counter_delta('node_network_receive_bytes_total{device="enp7s0",machine="pc"}', t1 + 4, dur).get("pc", 0)
@@ -165,7 +196,7 @@ def execute(size, app, cfg, rep, rid) -> dict:
     }
     res["link_airtime_pct"] = round(100 * (res["net_pc_lan_rx_mb"] * 8 / dur / ch.UPLINK_MBIT
                                            + res["net_pc_lan_tx_mb"] * 8 / dur / ch.DOWNLINK_MBIT), 1)
-    ch.dx("hdfs", "dfs", "-rm", "-r", "-f", "-skipTrash", out, check=False)
+    hdfs_rm(out)
     return res
 
 

@@ -14,64 +14,64 @@
   "spark.broadcast.compress=false",
   "spark.rdd.compress=false"
  ],
- "app_id": "app-20261122093331-0009",
- "t0": 1795340008.6834934,
- "t1": 1795340063.3963366,
- "wall_s": 54.71,
+ "app_id": "app-20261122160624-0005",
+ "t0": 1795363582.022833,
+ "t1": 1795363635.172281,
+ "wall_s": 53.15,
  "cpu_host": {
   "pc": {
-   "mean_busy_cores": 8.47,
-   "peak_busy_cores": 16.07
+   "mean_busy_cores": 8.57,
+   "peak_busy_cores": 16.12
   },
   "mac": {
-   "mean_busy_cores": 2.13,
-   "peak_busy_cores": 4.04
+   "mean_busy_cores": 2.11,
+   "peak_busy_cores": 4.07
   }
  },
- "net_pc_lan_tx_mb": 540.8,
- "net_pc_lan_rx_mb": 329.4,
+ "net_pc_lan_tx_mb": 583.0,
+ "net_pc_lan_rx_mb": 324.8,
  "disk_read_mb": {
-  "pc": 771.1,
-  "mac": 287.9
+  "pc": 772.8,
+  "mac": 314.4
  },
  "disk_write_mb": {
-  "pc": 948.1,
-  "mac": 227.5
+  "pc": 870.5,
+  "mac": 14.0
  },
  "eventlog": {
   "tasks": 187,
-  "run_ms": 744572,
-  "cpu_ns": 439485696081,
-  "gc_ms": 2868,
+  "run_ms": 712213,
+  "cpu_ns": 429049172468,
+  "gc_ms": 2374,
   "input_b": 736636134,
-  "output_b": 23074484,
+  "output_b": 23073670,
   "shuf_w_b": 1058598072,
-  "shuf_w_ms": 1868.2280819999996,
-  "shuf_r_remote_b": 774768308,
-  "shuf_r_local_b": 1304099164,
-  "fetch_wait_ms": 208673,
+  "shuf_w_ms": 1706.7155830000008,
+  "shuf_r_remote_b": 802291036,
+  "shuf_r_local_b": 1276576436,
+  "fetch_wait_ms": 188804,
   "spill_b": 0,
   "local": 187,
   "nonlocal_": 0,
   "by_host": {
    "cb-mac": {
-    "cpu_s": 90.95403774300001,
-    "tasks": 77
+    "cpu_s": 87.78039381499997,
+    "tasks": 78
    },
    "cb-pc": {
-    "cpu_s": 348.531658338,
-    "tasks": 110
+    "cpu_s": 341.26877865299997,
+    "tasks": 109
    }
   }
  },
  "stages": {
-  "stage_wall_total_s": 48.48,
-  "shuffle_map_stage_wall_s": 37.38,
+  "stage_wall_total_s": 47.0,
+  "shuffle_map_stage_wall_s": 37.13,
   "n_stages": 5
  },
  "hdfs_input_bytes": 2624417545,
- "hdfs_output_bytes": 23074484,
- "link_airtime_pct": 32.0,
- "git_commit": "68a34f1",
+ "hdfs_output_bytes": 23073670,
+ "link_airtime_pct": 33.9,
+ "git_commit": "5420153",
  "attempt": 1
 }
