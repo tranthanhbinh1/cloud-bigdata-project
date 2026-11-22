@@ -32,6 +32,11 @@ services:
       TS_STATE_DIR: /var/lib/tailscale
       TS_USERSPACE: "false"
       TS_ACCEPT_DNS: "false"
+      # Direct PC<->Mac path: the sidecar sits behind Docker NAT, so advertise the host's LAN address
+      # for a fixed, published UDP port (the host's own tailscaled already uses 41641).
+      TS_TAILSCALED_EXTRA_ARGS: "--port=41642"
+      TS_DEBUG_PRETENDPOINT: "${PC_LAN_IP}:41642"
+    ports: ["41642:41642/udp"]
     cap_add: [NET_ADMIN, NET_RAW]
     devices: ["/dev/net/tun:/dev/net/tun"]
     # /etc/hosts is shared with every container using this network namespace.

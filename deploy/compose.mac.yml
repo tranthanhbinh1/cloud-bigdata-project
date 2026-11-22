@@ -72,7 +72,7 @@ services:
     network_mode: "service:tailscale"
     pid: host
     command: ["--path.rootfs=/host", "--collector.netdev.device-include=^(eth0|tailscale0)$$"]
-    volumes: ["/:/host:ro,rslave"]
+    volumes: ["/:/host:ro"]   # no rslave: Docker Desktop's VM rejects it
     depends_on:
       tailscale: {condition: service_healthy}
 
