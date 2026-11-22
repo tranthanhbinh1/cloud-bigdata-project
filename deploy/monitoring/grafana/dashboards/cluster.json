@@ -129,7 +129,7 @@
   {
    "id": 5,
    "type": "timeseries",
-   "title": "Tailscale tx / rx (B/s) - cross-machine traffic",
+   "title": "Network tx / rx (B/s) - PC<->Mac LAN traffic",
    "datasource": {
     "type": "prometheus",
     "uid": "prom"
@@ -149,12 +149,12 @@
    "targets": [
     {
      "refId": "A",
-     "expr": "rate(node_network_transmit_bytes_total{device=\"tailscale0\"}[10s])",
+     "expr": "rate(node_network_transmit_bytes_total{device=~\"enp7s0|eth0\"}[10s])",
      "legendFormat": "{{machine}} tx"
     },
     {
      "refId": "B",
-     "expr": "rate(node_network_receive_bytes_total{device=\"tailscale0\"}[10s])",
+     "expr": "rate(node_network_receive_bytes_total{device=~\"enp7s0|eth0\"}[10s])",
      "legendFormat": "{{machine}} rx"
     }
    ]
@@ -162,7 +162,7 @@
   {
    "id": 6,
    "type": "timeseries",
-   "title": "Tailscale sidecar CPU (cores) - WireGuard cost",
+   "title": "Container CPU (cores): Spark workers",
    "datasource": {
     "type": "prometheus",
     "uid": "prom"
@@ -182,7 +182,7 @@
    "targets": [
     {
      "refId": "A",
-     "expr": "sum by (machine) (rate(container_cpu_usage_seconds_total{name=~\"cb-ts-.*\"}[10s]))",
+     "expr": "sum by (machine) (rate(container_cpu_usage_seconds_total{name=~\"cb-spark-worker-.*\"}[10s]))",
      "legendFormat": "{{machine}}"
     }
    ]

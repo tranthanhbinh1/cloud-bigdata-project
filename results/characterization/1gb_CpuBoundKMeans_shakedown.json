@@ -1,0 +1,65 @@
+{
+ "app": "CpuBoundKMeans",
+ "size": "1gb",
+ "app_id": "app-20261122063613-0007",
+ "wall_s": 21.5,
+ "cpu": {
+  "pc": {
+   "mean_busy_cores": 2.75,
+   "peak_busy_cores": 4.21
+  },
+  "mac": {
+   "mean_busy_cores": 2.49,
+   "peak_busy_cores": 4.05
+  }
+ },
+ "net_tailscale_tx_mb": {
+  "pc": 7.0,
+  "mac": 0.6
+ },
+ "net_tailscale_rx_mb": {
+  "pc": 0.6,
+  "mac": 7.1
+ },
+ "disk_read_mb": {
+  "pc": 226.6,
+  "mac": 301.6
+ },
+ "disk_write_mb": {
+  "pc": 38.6,
+  "mac": 0.3
+ },
+ "eventlog": {
+  "tasks": 17,
+  "run_ms": 103213,
+  "cpu_ns": 94099491059,
+  "gc_ms": 491,
+  "input_b": 258427869,
+  "output_b": 45343,
+  "shuf_w_b": 0,
+  "shuf_w_ms": 0.0,
+  "shuf_r_remote_b": 0,
+  "shuf_r_local_b": 0,
+  "fetch_wait_ms": 0,
+  "spill_b": 0,
+  "local": 17,
+  "nonlocal_": 0,
+  "by_host": {
+   "cb-pc": {
+    "cpu_s": 40.899186447999995,
+    "tasks": 9
+   },
+   "cb-mac": {
+    "cpu_s": 53.200304611,
+    "tasks": 8
+   }
+  }
+ },
+ "conf": [
+  "spark.sql.parquet.compression.codec=uncompressed",
+  "spark.shuffle.compress=false",
+  "spark.shuffle.spill.compress=false",
+  "spark.broadcast.compress=false",
+  "spark.rdd.compress=false"
+ ]
+}

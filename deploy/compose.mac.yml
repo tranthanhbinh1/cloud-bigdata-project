@@ -1,8 +1,15 @@
-# Mac node (Docker Desktop, Apple silicon): Tailscale sidecar + DataNode + Spark Worker #2.
+# Mac node (Docker Desktop, Apple silicon): DataNode + Spark Worker #2 + node-exporter + cAdvisor.
+#
+# REQUIRES Docker Desktop > Settings > Resources > Network > "Enable host networking": containers with
+# network_mode: host then have their LISTENING ports exposed on the Mac's LAN address, so the PC can reach them.
+# Only wildcard (0.0.0.0) listeners are forwarded -- hence `cb-mac` resolves to 0.0.0.0 INSIDE these containers:
+# services bind the wildcard, local traffic stays on loopback, and the name `cb-mac` that they advertise to the PC
+# resolves (on the PC) to the Mac's LAN IP.
+#
 # Docker Desktop settings (Settings > Resources): CPUs >= 8, Memory >= 10-11 GB, disk image >= 150 GB.
 # Keep the Mac plugged in, Low Power Mode off, and run `caffeinate -dimsu` during experiments.
 #
-#   cp deploy/.env.example deploy/.env   # same values as on the PC (needs its own TS_AUTHKEY or a reusable one)
+#   cp deploy/.env.example deploy/.env   # same values as on the PC
 #   docker compose -f deploy/compose.mac.yml --env-file deploy/.env up -d
 name: compbench-mac
 
@@ -12,39 +19,17 @@ x-node-env: &node-env
   # In standalone mode the worker's SPARK_LOCAL_DIRS overrides spark.local.dir: pin shuffle/spill to the volume.
   SPARK_LOCAL_DIRS: /spark-local
 
+x-hosts: &hosts
+  - "cb-pc:${PC_LAN_IP}"
+  - "cb-mac:0.0.0.0"
+
 x-svc: &svc
   image: compbench:latest
   restart: unless-stopped
-  network_mode: "service:tailscale"
-  depends_on:
-    tailscale:
-      condition: service_healthy
+  network_mode: host
+  extra_hosts: *hosts
 
 services:
-  tailscale:
-    image: ${TS_IMAGE:-tailscale/tailscale:stable}
-    container_name: cb-ts-mac
-    hostname: ts-mac
-    restart: unless-stopped
-    environment:
-      TS_AUTHKEY: ${TS_AUTHKEY}
-      TS_HOSTNAME: cb-mac
-      TS_STATE_DIR: /var/lib/tailscale
-      TS_USERSPACE: "false"
-      TS_ACCEPT_DNS: "false"
-    cap_add: [NET_ADMIN, NET_RAW]
-    devices: ["/dev/net/tun:/dev/net/tun"]
-    extra_hosts:
-      - "cb-pc:${PC_TS_IP}"
-      - "cb-mac:${MAC_TS_IP}"
-    volumes:
-      - ts-state:/var/lib/tailscale
-    healthcheck:
-      test: ["CMD-SHELL", "tailscale ip -4 | grep -q '^100\\.'"]
-      interval: 3s
-      timeout: 3s
-      retries: 40
-
   datanode:
     <<: *svc
     container_name: cb-datanode-mac
@@ -69,31 +54,31 @@ services:
     image: prom/node-exporter:v1.8.2
     container_name: cb-node-exporter-mac
     restart: unless-stopped
-    network_mode: "service:tailscale"
+    network_mode: host
+    extra_hosts: *hosts
     pid: host
-    command: ["--path.rootfs=/host", "--collector.netdev.device-include=^(eth0|tailscale0)$$"]
+    command: ["--path.rootfs=/host", "--collector.netdev.device-include=^(enp7s0|eth0)$$"]
     volumes: ["/:/host:ro"]   # no rslave: Docker Desktop's VM rejects it
-    depends_on:
-      tailscale: {condition: service_healthy}
 
+  # NOTE: on Docker Desktop cAdvisor 0.49 cannot resolve container layers (containerd image store), so it only reports
+  # the VM root cgroup here. Per-machine CPU therefore comes from node-exporter + the Spark event log, not cAdvisor.
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:v0.49.1
     container_name: cb-cadvisor-mac
     restart: unless-stopped
-    network_mode: "service:tailscale"
+    network_mode: host
+    extra_hosts: *hosts
     privileged: true
     command: ["--port=8082", "--docker_only=true", "--housekeeping_interval=2s", "--store_container_labels=false",
               "--whitelisted_container_labels=com.docker.compose.service"]
+    healthcheck: {disable: true}   # the image probes :8080, but cAdvisor listens on :8082 here
     volumes:
       - /:/rootfs:ro
       - /var/run:/var/run:ro
       - /sys:/sys:ro
       - /var/lib/docker/:/var/lib/docker:ro
-    depends_on:
-      tailscale: {condition: service_healthy}
 
 volumes:
-  ts-state:
   hdfs-data:
   spark-local:
   spark-work:

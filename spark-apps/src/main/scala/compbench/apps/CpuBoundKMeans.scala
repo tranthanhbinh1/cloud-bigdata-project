@@ -11,7 +11,7 @@ import org.apache.spark.sql.functions.col
   * dwarfs the ~35 bytes read, and only k*(8+1) numbers ever cross the network.
   * Fixed seed and no caching: every run does identical work and cost scales linearly with data size.
   *
-  * args: --k 512 (default; raise it if the gate shows the app is not CPU-bound enough)
+  * args: --k 1024 (default; gate at 5 GB: k=512 -> 80-82 % executor CPU, k=1024 -> 87-88 %)
   *
   * Expected profile: CPU > ~80 % on both workers, tiny shuffle, I/O only for the initial read.
   * No compression option is set here: codecs are injected with `--conf` at submit time.
@@ -25,7 +25,7 @@ object CpuBoundKMeans {
     val spark = SparkSession.builder().appName(s"A2-cpu-bound-${args.runId}").getOrCreate()
     import spark.implicits._
 
-    val k = args.getInt("k", 512)
+    val k = args.getInt("k", 1024)
     val d = TaxiSchema.numericFeatures.length
     require(scale.length == d, "scale must match TaxiSchema.numericFeatures")
 

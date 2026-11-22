@@ -2,6 +2,6 @@
 <configuration>
   <property>
     <name>fs.defaultFS</name>
-    <value>hdfs://${env.MASTER_HOST}:9000</value>
+    <value>hdfs://${env.MASTER_HOST}:8020</value>
   </property>
 </configuration>

@@ -8,7 +8,7 @@
   <property><name>dfs.namenode.name.dir</name><value>file:///hdfs/name</value></property>
   <property><name>dfs.datanode.data.dir</name><value>file:///hdfs/data</value></property>
 
-  <!-- Listen on every interface (the Tailscale one included); advertise the logical hostnames. -->
+  <!-- Listen on every interface; advertise the logical hostnames (cb-pc / cb-mac). -->
   <property><name>dfs.namenode.rpc-bind-host</name><value>0.0.0.0</value></property>
   <property><name>dfs.namenode.http-bind-host</name><value>0.0.0.0</value></property>
   <property><name>dfs.datanode.hostname</name><value>${env.NODE_HOST}</value></property>

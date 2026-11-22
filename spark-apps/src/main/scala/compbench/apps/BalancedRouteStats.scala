@@ -6,12 +6,17 @@ import org.apache.spark.sql.functions._
 
 /** App 3 — BALANCED CPU / I/O.
   *
-  * Real computation AND real data movement:
-  *   1. per-route statistics: groupBy (pickup zone, dropoff zone, hour) -> count, avg/stddev of duration,
-  *      median duration, avg fare  (aggregation + percentile = CPU)
-  *   2. join the statistics back onto every trip (sort-merge join: the baseline config disables broadcast
-  *      joins) and compute each trip's deviation from its route average  (shuffle of all trips + sort = I/O + CPU)
-  *   3. write the per-trip deviations
+  * Real computation AND real data movement, tuned so that neither dominates on this cluster. The PC<->Mac link is
+  * ~35 MB/s Wi-Fi, so anything that shuffles whole rows (e.g. joining statistics back onto every trip) is network-bound
+  * (measured at 5 GB: 8.6 GB shuffled, executor CPU 18-24 %, link saturated). Instead:
+  *      (5 GB gate: by hour -> ~1.6M groups -> 6.5 GB of partial aggregates, link saturated, 243 s;
+  *       by (pu,do) only -> ~70K groups -> 0.84 GB shuffle, CPU-leaning, link ~20 % busy;
+  *       the key granularity is the dial that sets how much data moves relative to the computation)
+  *   1. per-route statistics: groupBy (pickup zone, dropoff zone, 6-hour day part) -> count, mean/stddev/skewness/kurtosis of
+  *      duration, fare, distance and tip, and a couple of derived ratios  (many aggregates = CPU; map-side combine keeps the
+  *      shuffle to partial aggregates = moderate data movement)
+  *   2. global sort by trip count (a second shuffle + range partitioning)
+  *   3. write the statistics table
   *
   * Expected profile: substantial CPU and substantial shuffle, neither pinned at saturation.
   * No compression option is set here: codecs are injected with `--conf` at submit time.
@@ -21,23 +26,22 @@ object BalancedRouteStats {
     val args  = JobArgs.parse(argv)
     val spark = SparkSession.builder().appName(s"A3-balanced-${args.runId}").getOrCreate()
 
+    val route = Seq("pu_location_id", "do_location_id", "day_part")
     val trips = spark.read.parquet(args.input)
-    val route = Seq("pu_location_id", "do_location_id", "pickup_hour")
+      .where(col("trip_distance") > 0 && col("trip_duration_s") > 0)
+      .withColumn("day_part", (col("pickup_hour") / 6).cast("int"))     // 4 buckets of 6 h
+      .withColumn("speed_mph", col("trip_distance") / (col("trip_duration_s") / 3600.0))
+      .withColumn("fare_per_mile", col("fare_amount") / col("trip_distance"))
+      .withColumn("tip_pct", when(col("fare_amount") > 0, col("tip_amount") / col("fare_amount")))
 
-    val stats = trips.groupBy(route.map(col): _*).agg(
-      count(lit(1)).as("n"),
-      avg("trip_duration_s").as("avg_duration"),
-      stddev("trip_duration_s").as("std_duration"),
-      percentile_approx(col("trip_duration_s"), lit(0.5), lit(1000)).as("median_duration"),
-      avg("fare_amount").as("avg_fare"))
+    def moments(c: String) = Seq(
+      avg(c).as(s"${c}_avg"), stddev(c).as(s"${c}_std"), skewness(c).as(s"${c}_skew"), kurtosis(c).as(s"${c}_kurt"))
 
-    trips.join(stats, route)
-      .select(
-        col("pickup_date"), col("pu_location_id"), col("do_location_id"), col("pickup_hour"),
-        (col("trip_duration_s") - col("avg_duration")).as("duration_dev"),
-        (col("trip_duration_s") - col("median_duration")).as("duration_dev_median"),
-        // routes whose average fare is 0 exist; Spark 4 runs in ANSI mode, where x / 0 is an error
-        when(col("avg_fare") > 0, col("fare_amount") / col("avg_fare")).as("fare_ratio"))
+    val cols = Seq("trip_duration_s", "fare_amount", "trip_distance", "tip_amount", "speed_mph", "fare_per_mile", "tip_pct")
+    val aggs = count(lit(1)).as("n") +: cols.flatMap(moments) :+ max("total_amount").as("max_total")
+
+    trips.groupBy(route.map(col): _*).agg(aggs.head, aggs.tail: _*)
+      .orderBy(col("n").desc)
       .write.mode("overwrite").parquet(args.output)
 
     spark.stop()

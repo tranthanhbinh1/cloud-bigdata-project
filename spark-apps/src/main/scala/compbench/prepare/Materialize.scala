@@ -16,7 +16,7 @@ import org.apache.spark.sql.functions._
   *
   * args: --input  hdfs:///data/taxi/canonical
   *       --output hdfs:///data/taxi                 -> <output>/<size>gb/<codec>/  (+ MANIFEST.json)
-  *       --sizes  1,5,10,20          (default)
+  *       --sizes  1,5,10,15          (default; the full dataset is 18.25 GB)
   *       --codecs uncompressed,snappy,lz4_raw,gzip,zstd   (default)
   *       --overwrite true            (default: skip datasets that already have _SUCCESS)
   */
@@ -30,7 +30,7 @@ object Materialize {
     val hconf = spark.sparkContext.hadoopConfiguration
     val fs    = FileSystem.get(new URI(args.output), hconf)
 
-    val sizes     = args.get("sizes").getOrElse("1,5,10,20").split(",").map(_.trim.toInt).toSeq
+    val sizes     = args.get("sizes").getOrElse("1,5,10,15").split(",").map(_.trim.toInt).toSeq
     val codecs    = args.get("codecs").map(_.split(",").map(_.trim).toSeq).getOrElse(DefaultCodecs)
     val overwrite = args.get("overwrite").contains("true")
 

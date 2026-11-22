@@ -1,20 +1,21 @@
 #!/usr/bin/env bash
-# Verifies the PC<->Mac Tailscale path is DIRECT (not DERP-relayed) and measures throughput.
-# Run on the PC. Prints one JSON line; `--quiet` suppresses the human summary (used by the harness).
-#   iperf3 server runs in the cb-client container on the PC; the client runs in the Mac's DataNode
-#   container via the Mac Docker context ($MAC_CONTEXT, default "mac").
+# Measures the PC<->Mac LAN throughput with iperf3 (4 parallel streams, both directions) and prints ONE JSON line.
+# Run on the PC. The iperf3 server runs in the cb-client container (PC network); the client runs in the Mac's
+# DataNode container via the Mac Docker context ($MAC_CONTEXT, default "mac").
+#   mac_to_pc = Mac uplink (the slower direction on Wi-Fi), pc_to_mac = downlink.
 set -euo pipefail
+export LC_ALL=C   # decimal point, not the locale's comma (output is JSON)
 MAC_CONTEXT="${MAC_CONTEXT:-mac}"
-SECS="${SECS:-10}"
+SECS="${SECS:-8}"
+STREAMS="${STREAMS:-4}"
 
-ping_out=$(docker exec cb-ts-pc tailscale ping --c 5 --until-direct=false cb-mac 2>&1 || true)
-if echo "$ping_out" | grep -q "DERP"; then path="relayed"; else path="direct"; fi
-latency=$(echo "$ping_out" | grep -oE 'in [0-9.]+ms' | tail -1 | grep -oE '[0-9.]+' || echo "null")
-
-docker exec -d cb-client iperf3 -s -1 -p 5201 >/dev/null 2>&1
+run() {  # run <extra iperf3 flags> -> Mbit/s (receiver side, summed over streams)
+  docker exec -d cb-client iperf3 -s -1 -p 5201 >/dev/null 2>&1
+  sleep 1
+  docker --context "$MAC_CONTEXT" exec cb-datanode-mac iperf3 -c cb-pc -p 5201 -P "$STREAMS" -t "$SECS" -J "$@" \
+    | python3 -c 'import sys,json; print(round(json.load(sys.stdin)["end"]["sum_received"]["bits_per_second"]/1e6,1))'
+}
+up=$(run)
 sleep 1
-bps=$(docker --context "$MAC_CONTEXT" exec cb-datanode-mac iperf3 -c cb-pc -p 5201 -t "$SECS" -J \
-        | python3 -c 'import sys,json; print(int(json.load(sys.stdin)["end"]["sum_received"]["bits_per_second"]))')
-
-printf '{"path":"%s","latency_ms":%s,"iperf3_mbit_s":%.1f}\n' "$path" "${latency:-null}" "$(echo "$bps/1000000" | bc -l)"
-[ "$path" = "direct" ] || { echo "WARNING: Tailscale path is relayed; throughput will be unrepresentative" >&2; exit 1; }
+down=$(run -R)
+printf '{"mac_to_pc_mbit_s":%s,"pc_to_mac_mbit_s":%s,"streams":%s}\n' "$up" "$down" "$STREAMS"

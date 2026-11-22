@@ -1,9 +1,14 @@
-# PC node (Linux x86): Tailscale sidecar + NameNode + DataNode + Spark master + Worker #1
-# + history server + client (driver). Every service shares the sidecar's network namespace, so
-# all of them are reachable on the PC's tailnet IP with no port publishing.
+# PC node (Linux x86): NameNode + DataNode + Spark master + Worker #1 + history server + client (driver)
+# + monitoring. Every container uses the PC's own network (network_mode: host), so the PC<->Mac traffic is plain
+# LAN traffic with no overlay. The Mac side is deploy/compose.mac.yml (Docker Desktop with host networking enabled).
 #
-#   cp deploy/.env.example deploy/.env   # then edit
+#   cp deploy/.env.example deploy/.env   # then edit (LAN IPs)
 #   docker compose -f deploy/compose.pc.yml --env-file deploy/.env up -d
+#
+# Ports used on the PC (must be free): HDFS 8020/9870/9866/9864/9867, Spark 7077/8080/8081/18080/4040 + 7078-7080,
+# node-exporter 9100, cAdvisor 8082, Prometheus 9090, Grafana 3000.
+# SECURITY: Spark standalone and HDFS run WITHOUT authentication on your LAN. Only use on a network you trust,
+# or restrict with a firewall to the Mac's address (e.g. `ufw allow from <MAC_LAN_IP>`).
 name: compbench-pc
 
 x-node-env: &node-env
@@ -12,45 +17,17 @@ x-node-env: &node-env
   # In standalone mode the worker's SPARK_LOCAL_DIRS overrides spark.local.dir: pin shuffle/spill to the volume.
   SPARK_LOCAL_DIRS: /spark-local
 
+x-hosts: &hosts
+  - "cb-pc:${PC_LAN_IP}"
+  - "cb-mac:${MAC_LAN_IP}"
+
 x-svc: &svc
   image: compbench:latest
   restart: unless-stopped
-  network_mode: "service:tailscale"
-  depends_on:
-    tailscale:
-      condition: service_healthy
+  network_mode: host
+  extra_hosts: *hosts
 
 services:
-  tailscale:
-    image: ${TS_IMAGE:-tailscale/tailscale:stable}
-    container_name: cb-ts-pc
-    hostname: ts-pc
-    restart: unless-stopped
-    environment:
-      TS_AUTHKEY: ${TS_AUTHKEY}
-      TS_HOSTNAME: cb-pc
-      TS_STATE_DIR: /var/lib/tailscale
-      TS_USERSPACE: "false"
-      TS_ACCEPT_DNS: "false"
-      # Direct PC<->Mac path: the sidecar sits behind Docker NAT, so advertise the host's LAN address
-      # for a fixed, published UDP port (the host's own tailscaled already uses 41641).
-      TS_TAILSCALED_EXTRA_ARGS: "--port=41642"
-      TS_DEBUG_PRETENDPOINT: "${PC_LAN_IP}:41642"
-    ports: ["41642:41642/udp"]
-    cap_add: [NET_ADMIN, NET_RAW]
-    devices: ["/dev/net/tun:/dev/net/tun"]
-    # /etc/hosts is shared with every container using this network namespace.
-    extra_hosts:
-      - "cb-pc:${PC_TS_IP}"
-      - "cb-mac:${MAC_TS_IP}"
-    volumes:
-      - ts-state:/var/lib/tailscale
-    healthcheck:
-      test: ["CMD-SHELL", "tailscale ip -4 | grep -q '^100\\.'"]
-      interval: 3s
-      timeout: 3s
-      retries: 40
-
   namenode:
     <<: *svc
     container_name: cb-namenode
@@ -64,9 +41,7 @@ services:
     command: ["datanode"]
     environment: *node-env
     volumes: ["hdfs-data:/hdfs/data"]
-    depends_on:
-      tailscale: {condition: service_healthy}
-      namenode: {condition: service_started}
+    depends_on: [namenode]
 
   spark-master:
     <<: *svc
@@ -86,9 +61,7 @@ services:
       WORKER_CORES: "4"
       WORKER_MEMORY: "6g"
     volumes: ["spark-local:/spark-local", "spark-work:/spark-work"]
-    depends_on:
-      tailscale: {condition: service_healthy}
-      spark-master: {condition: service_started}
+    depends_on: [spark-master]
 
   spark-history:
     <<: *svc
@@ -109,52 +82,52 @@ services:
       - ../data:/data
       - ../results:/results
 
-  # ---- monitoring (ports: node-exporter 9100, cAdvisor 8082, Prometheus 9090, Grafana 3000) ----
+  # ---- monitoring ----
   node-exporter:
     image: prom/node-exporter:v1.8.2
     container_name: cb-node-exporter-pc
     restart: unless-stopped
-    network_mode: "service:tailscale"
+    network_mode: host
+    extra_hosts: *hosts
     pid: host
-    command: ["--path.rootfs=/host", "--collector.netdev.device-include=^(eth0|tailscale0)$$"]
+    # network devices that carry the PC<->Mac traffic: PC = enp7s0 (wired), Mac Docker VM = eth0
+    command: ["--path.rootfs=/host", "--collector.netdev.device-include=^(enp7s0|eth0)$$"]
     volumes: ["/:/host:ro,rslave"]
-    depends_on:
-      tailscale: {condition: service_healthy}
 
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:v0.49.1
     container_name: cb-cadvisor-pc
     restart: unless-stopped
-    network_mode: "service:tailscale"
+    network_mode: host
+    extra_hosts: *hosts
     privileged: true
     command: ["--port=8082", "--docker_only=true", "--housekeeping_interval=2s", "--store_container_labels=false",
               "--whitelisted_container_labels=com.docker.compose.service"]
+    healthcheck: {disable: true}   # the image probes :8080, but cAdvisor listens on :8082 here
     volumes:
       - /:/rootfs:ro
       - /var/run:/var/run:ro
       - /sys:/sys:ro
       - /var/lib/docker/:/var/lib/docker:ro
-    depends_on:
-      tailscale: {condition: service_healthy}
 
   prometheus:
     image: prom/prometheus:v2.55.1
     container_name: cb-prometheus
     restart: unless-stopped
-    network_mode: "service:tailscale"
+    network_mode: host
+    extra_hosts: *hosts
     command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.path=/prometheus",
               "--storage.tsdb.retention.time=60d"]
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
-    depends_on:
-      tailscale: {condition: service_healthy}
 
   grafana:
     image: grafana/grafana:11.3.1
     container_name: cb-grafana
     restart: unless-stopped
-    network_mode: "service:tailscale"
+    network_mode: host
+    extra_hosts: *hosts
     environment:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
       GF_AUTH_ANONYMOUS_ENABLED: "true"
@@ -163,13 +136,10 @@ services:
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
       - grafana-data:/var/lib/grafana
-    depends_on:
-      tailscale: {condition: service_healthy}
 
 volumes:
   prometheus-data:
   grafana-data:
-  ts-state:
   hdfs-name:
   hdfs-data:
   spark-local:
