@@ -25,7 +25,9 @@ ROOT = Path(__file__).resolve().parent.parent
 CLIENT = "cb-client"
 HDFS = "hdfs://cb-pc:8020"
 PROM = "http://cb-pc:9090"
-WORKER_CORES = 4
+WORKER_CORES = 4   # cores per worker / executor
+PC_WORKERS = 4
+HOST_CORES = {"cb-pc": PC_WORKERS * WORKER_CORES, "cb-mac": WORKER_CORES}   # PC = 4 workers x 4 cores, Mac = 1 worker
 # Measured Wi-Fi capacity (deploy/scripts/netcheck.sh, 4 streams): Mac->PC = the PC's receive side, PC->Mac = its transmit side.
 UPLINK_MBIT, DOWNLINK_MBIT = 280.0, 535.0
 APPS = {"IoBoundEtl": "A1-io", "CpuBoundKMeans": "A2-cpu", "BalancedRouteStats": "A3-balanced"}
@@ -163,7 +165,7 @@ def summarize(r: dict) -> str:
     e = r["eventlog"]
     gb = lambda b: f"{b / 1e9:6.2f}"
     cpu = "  ".join(f"{m}: {c['mean_busy_cores']:.1f} mean / {c['peak_busy_cores']:.1f} peak busy cores" for m, c in r["cpu"].items())
-    ex = "  ".join(f"{h}: {v['cpu_s']:.0f}s CPU = {100 * v['cpu_s'] / (r['wall_s'] * WORKER_CORES):.0f}% of {WORKER_CORES} cores, {v['tasks']} tasks"
+    ex = "  ".join(f"{h}: {v['cpu_s']:.0f}s CPU = {100 * v['cpu_s'] / (r['wall_s'] * HOST_CORES.get(h, WORKER_CORES)):.0f}% of {HOST_CORES.get(h, WORKER_CORES)} cores, {v['tasks']} tasks"
                    for h, v in sorted(e["by_host"].items()))
     return (f"{r['app']:<20} {r['size']:>5}  wall {r['wall_s']:6.1f}s\n"
             f"{'':<20} executor CPU (event log): {ex}\n"

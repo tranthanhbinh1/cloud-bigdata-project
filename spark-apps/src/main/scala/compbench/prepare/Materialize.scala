@@ -16,12 +16,12 @@ import org.apache.spark.sql.functions._
   *
   * args: --input  hdfs:///data/taxi/canonical
   *       --output hdfs:///data/taxi                 -> <output>/<size>gb/<codec>/  (+ MANIFEST.json)
-  *       --sizes  1,5,10,15          (default; the full dataset is 18.25 GB)
-  *       --codecs uncompressed,snappy,lz4_raw,gzip,zstd   (default)
+  *       --sizes  1,5,10,15          (default; decimals allowed, e.g. 0.5,2.5; the full dataset is 18.25 GB)
+  *       --codecs uncompressed,snappy,lz4,gzip,zstd   (default)
   *       --overwrite true            (default: skip datasets that already have _SUCCESS)
   */
 object Materialize {
-  private val DefaultCodecs = Seq("uncompressed", "snappy", "lz4_raw", "gzip", "zstd")
+  private val DefaultCodecs = Seq("uncompressed", "snappy", "lz4", "gzip", "zstd")
   private val BlockBytes    = 128L * 1024 * 1024
 
   def main(argv: Array[String]): Unit = {
@@ -30,7 +30,7 @@ object Materialize {
     val hconf = spark.sparkContext.hadoopConfiguration
     val fs    = FileSystem.get(new URI(args.output), hconf)
 
-    val sizes     = args.get("sizes").getOrElse("1,5,10,15").split(",").map(_.trim.toInt).toSeq
+    val sizes     = args.get("sizes").getOrElse("1,5,10,15").split(",").map(_.trim.toDouble).toSeq
     val codecs    = args.get("codecs").map(_.split(",").map(_.trim).toSeq).getOrElse(DefaultCodecs)
     val overwrite = args.get("overwrite").contains("true")
 
@@ -43,33 +43,41 @@ object Materialize {
     val u = pmod(xxhash64(col("pickup_ts"), col("dropoff_ts"), col("pu_location_id"), col("do_location_id"),
                           col("total_amount"), col("trip_distance"), col("vendor_id")), lit(1L << 30)) / lit((1L << 30).toDouble)
 
+    // 5.0 -> "5", 0.5 -> "0.5": whole sizes keep their existing directory names (5gb, 10gb, ...)
+    def label(s: Double): String = if (s == math.rint(s)) s.toInt.toString else s.toString
+
     for (sizeGb <- sizes) {
-      val targetBytes = sizeGb * 1000L * 1000L * 1000L
+      val sz          = label(sizeGb)
+      val targetBytes = (sizeGb * 1e9).toLong
       val p           = math.min(1.0, targetBytes.toDouble / canonicalBytes)
       if (p < targetBytes.toDouble / canonicalBytes + 1e-12 && targetBytes > canonicalBytes)
         println(s"[materialize] WARNING: canonical data (${canonicalBytes / 1e9} GB) is smaller than ${sizeGb} GB; using all of it")
       val numFiles = math.max(8, math.round(targetBytes.toDouble / BlockBytes).toInt)
       val sample   = canonical.withColumn("_u", u).where(col("_u") < p).repartition(numFiles, col("_u")).drop("_u")
 
-      val sizes = scala.collection.mutable.LinkedHashMap[String, Long]()
+      val codecBytes = scala.collection.mutable.LinkedHashMap[String, Long]()
       for (codec <- codecs) {
-        val path = new Path(s"${args.output}/${sizeGb}gb/$codec")
+        val path = new Path(s"${args.output}/${sz}gb/$codec")
         if (!overwrite && fs.exists(new Path(path, "_SUCCESS"))) {
-          println(s"[materialize] ${sizeGb}gb/$codec exists, skipping")
+          println(s"[materialize] ${sz}gb/$codec exists, skipping")
         } else {
-          println(s"[materialize] writing ${sizeGb}gb/$codec  (p=${"%.4f".format(p)}, $numFiles files)")
+          println(s"[materialize] writing ${sz}gb/$codec  (p=${"%.4f".format(p)}, $numFiles files)")
           sample.write.mode("overwrite").option("compression", codec).parquet(path.toString)
         }
-        sizes(codec) = fs.getContentSummary(path).getLength
+        codecBytes(codec) = fs.getContentSummary(path).getLength
       }
 
-      val rows = spark.read.parquet(s"${args.output}/${sizeGb}gb/${codecs.head}").count()
+      // The manifest lists EVERY codec directory that exists for this size (not only the ones written in this run)
+      val sizeDir = new Path(s"${args.output}/${sz}gb")
+      fs.listStatus(sizeDir).filter(s => s.isDirectory && fs.exists(new Path(s.getPath, "_SUCCESS"))).sortBy(_.getPath.getName)
+        .foreach(s => codecBytes(s.getPath.getName) = fs.getContentSummary(s.getPath).getLength)
+      val rows = spark.read.parquet(s"${args.output}/${sz}gb/${codecs.head}").count()
       val json =
         s"""{"size_gb": $sizeGb, "rows": $rows, "sample_fraction": $p, "num_files": $numFiles,
-           | "bytes": {${sizes.map { case (c, b) => s""""$c": $b""" }.mkString(", ")}}}""".stripMargin
-      val out = fs.create(new Path(s"${args.output}/${sizeGb}gb/MANIFEST.json"), true)
+           | "bytes": {${codecBytes.map { case (c, b) => s""""$c": $b""" }.mkString(", ")}}}""".stripMargin
+      val out = fs.create(new Path(s"${args.output}/${sz}gb/MANIFEST.json"), true)
       out.write(json.getBytes(StandardCharsets.UTF_8)); out.close()
-      println(s"[materialize] ${sizeGb}gb manifest: $json")
+      println(s"[materialize] ${sz}gb manifest: $json")
     }
     spark.stop()
   }

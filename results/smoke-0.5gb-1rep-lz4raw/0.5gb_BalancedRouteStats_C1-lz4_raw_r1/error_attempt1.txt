@@ -1,0 +1,19 @@
+spark-submit failed:
+ 1.0 (TID 2) (cb-mac executor 0): TaskKilled (Stage cancelled: [FAILED_READ_FILE.NO_HINT] Encountered error while reading file hdfs://cb-pc:8020/data/taxi/0.5gb/lz4_raw/part-00000-f81396c2-1cde-454e-b4ed-0dec969ea133-c000.lz4raw.parquet.  SQLSTATE: KD001)
+26/11/22 08:37:08 INFO TaskSchedulerImpl: Removed TaskSet 1.0 whose tasks have all completed, from pool 
+26/11/22 08:37:08 WARN TaskSetManager: Lost task 7.0 in stage 1.0 (TID 8) (cb-mac executor 0): TaskKilled (Stage cancelled: [FAILED_READ_FILE.NO_HINT] Encountered error while reading file hdfs://cb-pc:8020/data/taxi/0.5gb/lz4_raw/part-00000-f81396c2-1cde-454e-b4ed-0dec969ea133-c000.lz4raw.parquet.  SQLSTATE: KD001)
+26/11/22 08:37:08 INFO TaskSchedulerImpl: Removed TaskSet 1.0 whose tasks have all completed, from pool 
+26/11/22 08:37:08 WARN TaskSetManager: Lost task 5.0 in stage 1.0 (TID 6) (cb-mac executor 0): TaskKilled (Stage cancelled: [FAILED_READ_FILE.NO_HINT] Encountered error while reading file hdfs://cb-pc:8020/data/taxi/0.5gb/lz4_raw/part-00000-f81396c2-1cde-454e-b4ed-0dec969ea133-c000.lz4raw.parquet.  SQLSTATE: KD001)
+26/11/22 08:37:08 INFO TaskSchedulerImpl: Removed TaskSet 1.0 whose tasks have all completed, from pool 
+26/11/22 08:37:08 WARN TaskSetManager: Lost task 4.0 in stage 1.0 (TID 4) (cb-mac executor 0): TaskKilled (Stage cancelled: [FAILED_READ_FILE.NO_HINT] Encountered error while reading file hdfs://cb-pc:8020/data/taxi/0.5gb/lz4_raw/part-00000-f81396c2-1cde-454e-b4ed-0dec969ea133-c000.lz4raw.parquet.  SQLSTATE: KD001)
+26/11/22 08:37:08 INFO TaskSchedulerImpl: Removed TaskSet 1.0 whose tasks have all completed, from pool 
+26/11/22 08:37:08 INFO MapOutputTrackerMasterEndpoint: MapOutputTrackerMasterEndpoint stopped!
+26/11/22 08:37:08 INFO MemoryStore: MemoryStore cleared
+26/11/22 08:37:08 INFO BlockManager: BlockManager stopped
+26/11/22 08:37:08 INFO BlockManagerMaster: BlockManagerMaster stopped
+26/11/22 08:37:08 INFO OutputCommitCoordinator$OutputCommitCoordinatorEndpoint: OutputCommitCoordinator stopped!
+26/11/22 08:37:08 INFO SparkContext: Successfully stopped SparkContext
+26/11/22 08:37:08 INFO ShutdownHookManager: Shutdown hook called
+26/11/22 08:37:08 INFO ShutdownHookManager: Deleting directory /spark-local/spark-a663f3d2-8777-47cc-839d-d487eaa9397a
+26/11/22 08:37:08 INFO ShutdownHookManager: Deleting directory /tmp/spark-4ada82a6-2588-4f03-8b81-d2bb743e7333
+26/11/22 08:37:08 INFO ShutdownHookManager: Deleting directory /tmp/artifacts-6a4d8f94-c3ab-41ea-b3ca-7999a116f19d

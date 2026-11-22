@@ -4,8 +4,9 @@ USTH InfraCloud project (`ProjectUSTH.pdf`): how storage-level (HDFS/Parquet) an
 (shuffle) compression affect performance and CPU cost, for an I/O-bound, a CPU-bound and a balanced
 Spark/Scala workload.
 
-**Cluster:** PC (Linux x86) = NameNode + DataNode + Spark master + worker + driver + monitoring;
-MacBook (M1 Pro, Docker Desktop) = DataNode + worker. One multi-arch image (`compbench`). Every container uses
+**Cluster:** PC (Linux x86) = NameNode + DataNode + Spark master + **4 workers** + driver + monitoring;
+MacBook (M1 Pro, Docker Desktop) = DataNode + 1 worker. All 5 workers/executors are identical (4 cores, 5 GB heap), so the
+PC is simply 4 'standard nodes' on one machine (16 of its 20 logical CPUs) and the Mac is 1. One multi-arch image (`compbench`). Every container uses
 `network_mode: host`, so PC<->Mac traffic is plain LAN traffic (no overlay). On the Mac this needs Docker Desktop's
 **host networking** (see below), and `cb-mac` resolves to `0.0.0.0` inside the Mac containers so services bind the
 wildcard, which Docker Desktop then exposes on the Mac's LAN address. Measured link (iperf3, 4 streams):

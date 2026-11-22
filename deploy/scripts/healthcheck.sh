@@ -4,9 +4,10 @@
 #   2. SparkPi runs on both executors
 #   3. a ~1 GB HDFS write lands blocks on BOTH DataNodes, and reads back intact
 #
-# Env: EXPECT_WORKERS (default 2)  — set to 1 for the single-machine local smoke test.
+# Env: EXPECT_WORKERS (default 5: 4 PC + 1 Mac), EXPECT_DATANODES (default 2).
 set -euo pipefail
-EXPECT_WORKERS="${EXPECT_WORKERS:-2}"
+EXPECT_WORKERS="${EXPECT_WORKERS:-5}"        # 4 PC workers + 1 Mac worker
+EXPECT_DATANODES="${EXPECT_DATANODES:-2}"    # one per machine
 CLIENT="${CLIENT:-cb-client}"
 sx() { docker exec "$CLIENT" "$@"; }
 sxi() { docker exec -i "$CLIENT" "$@"; }   # keeps stdin open (for piping into spark-shell)
@@ -34,7 +35,7 @@ sx hdfs dfs -du -s -h /healthcheck/data
 echo "  blocks per DataNode:"
 per_dn=$(sx hdfs fsck /healthcheck/data -files -blocks -locations 2>/dev/null | grep -oE 'DatanodeInfoWithStorage\[[^:]*' | sed 's/.*\[//' | sort | uniq -c)
 echo "$per_dn" | sed 's/^/    /'
-[ "$(echo "$per_dn" | grep -c .)" -ge "$EXPECT_WORKERS" ] || { echo "FAIL: blocks not spread over $EXPECT_WORKERS DataNodes"; exit 1; }
+[ "$(echo "$per_dn" | grep -c .)" -ge "$EXPECT_DATANODES" ] || { echo "FAIL: blocks not spread over $EXPECT_DATANODES DataNodes"; exit 1; }
 rows=$(echo 'println("ROWS=" + spark.read.parquet("/healthcheck/data").count())' | sxi spark-shell 2>&1 | grep -oE 'ROWS=[0-9]+' || true)
 echo "  read back: $rows"
 [ "$rows" = "ROWS=80000000" ] || { echo "FAIL: row count"; exit 1; }

@@ -1,4 +1,4 @@
-# PC node (Linux x86): NameNode + DataNode + Spark master + Worker #1 + history server + client (driver)
+# PC node (Linux x86): NameNode + DataNode + Spark master + 4 workers + history server + client (driver)
 # + monitoring. Every container uses the PC's own network (network_mode: host), so the PC<->Mac traffic is plain
 # LAN traffic with no overlay. The Mac side is deploy/compose.mac.yml (Docker Desktop with host networking enabled).
 #
@@ -49,11 +49,13 @@ services:
     command: ["master"]
     environment: *node-env
 
-  spark-worker:
+  # The PC hosts FOUR identical workers (4 cores / 6 GB each, one 4-core / 5 GB executor per worker) = 16 cores,
+  # the Mac hosts one. Spark standalone cannot size executors per worker, so a bigger PC is expressed as more
+  # identical workers rather than one big one. Worker web UIs auto-increment from 8081.
+  spark-worker-1: &pc-worker
     <<: *svc
-    container_name: cb-spark-worker-pc
+    container_name: cb-spark-worker-pc-1
     command: ["worker"]
-    # Same capacity as the Mac worker -> the two executors are comparable.
     cpus: 4
     mem_limit: 8g
     environment:
@@ -62,6 +64,18 @@ services:
       WORKER_MEMORY: "6g"
     volumes: ["spark-local:/spark-local", "spark-work:/spark-work"]
     depends_on: [spark-master]
+
+  spark-worker-2:
+    <<: *pc-worker
+    container_name: cb-spark-worker-pc-2
+
+  spark-worker-3:
+    <<: *pc-worker
+    container_name: cb-spark-worker-pc-3
+
+  spark-worker-4:
+    <<: *pc-worker
+    container_name: cb-spark-worker-pc-4
 
   spark-history:
     <<: *svc
