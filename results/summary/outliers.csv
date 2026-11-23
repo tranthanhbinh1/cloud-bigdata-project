@@ -1,0 +1,6 @@
+run_id,wall_s,cell_median_s,excess_s
+0.5gb_BalancedRouteStats_C1-lz4_r3,53.96,30.76,23.2
+0.5gb_IoBoundEtl_C0_r1,60.79,34.19,26.6
+0.5gb_IoBoundEtl_C1-gzip_r3,87.05,33.89,53.2
+5gb_BalancedRouteStats_C0_r1,118.18,92.31,25.9
+5gb_BalancedRouteStats_C1-lz4_r3,154.01,93.09,60.9
