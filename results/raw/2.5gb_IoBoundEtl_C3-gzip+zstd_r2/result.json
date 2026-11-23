@@ -1,0 +1,78 @@
+{
+ "run_id": "2.5gb_IoBoundEtl_C3-gzip+zstd_r2",
+ "size_gb": 2.5,
+ "app": "IoBoundEtl",
+ "config": "C3-gzip+zstd",
+ "group": "C3",
+ "storage": "gzip",
+ "shuffle": "zstd",
+ "rep": 2,
+ "confs": [
+  "spark.sql.parquet.compression.codec=gzip",
+  "spark.shuffle.compress=true",
+  "spark.shuffle.spill.compress=true",
+  "spark.broadcast.compress=true",
+  "spark.rdd.compress=false",
+  "spark.io.compression.codec=zstd"
+ ],
+ "app_id": "app-20261122173340-0100",
+ "t0": 1795368818.0249786,
+ "t1": 1795368850.466275,
+ "wall_s": 32.44,
+ "cpu_host": {
+  "pc": {
+   "mean_busy_cores": 9.77,
+   "peak_busy_cores": 16.23
+  },
+  "mac": {
+   "mean_busy_cores": 2.21,
+   "peak_busy_cores": 3.96
+  }
+ },
+ "net_pc_lan_tx_mb": 460.7,
+ "net_pc_lan_rx_mb": 423.7,
+ "disk_read_mb": {
+  "pc": 1269.6,
+  "mac": 457.5
+ },
+ "disk_write_mb": {
+  "pc": 3851.6,
+  "mac": 789.9
+ },
+ "eventlog": {
+  "tasks": 85,
+  "run_ms": 441487,
+  "cpu_ns": 311501238595,
+  "gc_ms": 5737,
+  "input_b": 1454648547,
+  "output_b": 1460147274,
+  "shuf_w_b": 2317263654,
+  "shuf_w_ms": 4027.317907,
+  "shuf_r_remote_b": 785232745,
+  "shuf_r_local_b": 1532030909,
+  "fetch_wait_ms": 45622,
+  "spill_b": 0,
+  "local": 85,
+  "nonlocal_": 0,
+  "by_host": {
+   "cb-pc": {
+    "cpu_s": 256.80697035399993,
+    "tasks": 67
+   },
+   "cb-mac": {
+    "cpu_s": 54.69426824099999,
+    "tasks": 18
+   }
+  }
+ },
+ "stages": {
+  "stage_wall_total_s": 26.8,
+  "shuffle_map_stage_wall_s": 9.23,
+  "n_stages": 3
+ },
+ "hdfs_input_bytes": 1456897905,
+ "hdfs_output_bytes": 1460147274,
+ "link_airtime_pct": 58.6,
+ "git_commit": "b16872f",
+ "attempt": 1
+}
