@@ -228,15 +228,16 @@ Development history:
 
 ![Execution time vs dataset size](../results/plots/fig1_time_vs_size.png)
 
-At 10 GB, storage compression alone (first row of fig1; fig6):
+At 10 GB, storage compression alone (first row of fig1; fig6). **Bold** times are significantly different from C0.
+A1's C0 runs spread from 455 to 507 s, so none of A1's storage-only gains is significant.
 
 | 10 GB, storage only | Input read | A1 time | A1 CPU | A1 disk R + W | A3 time | A2 time |
 |---|---|---|---|---|---|---|
 | none (C0) | 10.50 GB | 506 s | 573 s | 145 GB | 163 s | 126 s |
-| snappy | 7.39 GB | 471 s (1.08×) | 589 s | 136 GB | 166 s (0.98×) | 133 s (0.95×) |
+| snappy | 7.39 GB | 471 s (1.08×) | 589 s | 136 GB | 166 s (0.98×) | **133 s (0.95×)** |
 | lz4 | 7.36 GB | 436 s (1.16×) | 585 s | 136 GB | 155 s (1.05×) | 125 s (1.01×) |
-| gzip | 5.83 GB | 434 s (1.17×) | **926 s** | 130 GB | 159 s (1.02×) | 128 s (0.98×) |
-| zstd | 5.59 GB | 453 s (1.12×) | 600 s | 132 GB | 143 s (**1.14×**) | 125 s (1.01×) |
+| gzip | 5.83 GB | 434 s (1.17×) | 926 s (+62 %) | 130 GB | **159 s (1.02×)** | 128 s (0.98×) |
+| zstd | 5.59 GB | 453 s (1.12×) | 600 s | 132 GB | **143 s (1.14×)** | 125 s (1.01×) |
 
 - **Dataset size:** compression shrinks the stored data by 30 % (snappy, lz4) to 47 % (zstd).
 - **Overhead:** decompressing the input costs little CPU except with gzip (+62 % for A1). Writing A1's compressed
@@ -246,7 +247,14 @@ At 10 GB, storage compression alone (first row of fig1; fig6):
   ~290 MB/s whatever the codec.
 - **Does the saved disk I/O compensate for the CPU cost?** Only when the input read is on the critical path.
   Below 10 GB it is not: most tasks read node-local NVMe blocks, and all four codecs were significantly *slower*
-  for A1 at 2.5 GB. At 10 GB it is (Section 7.5).
+  for A1 at 2.5 GB.
+- **At 10 GB there is a trend, not a significant result, for A1.** The end-to-end speed-ups (1.08–1.17×) all
+  overlap C0's wide 455–507 s range. Two measurements suggest the trend is real:
+  - the read-heavy map stage is significantly shorter with lz4, gzip and zstd (49–59 s vs 81–86 s for C0);
+  - with shuffle compression on, adding gzip storage is significantly faster (C3 vs C2, Section 7.4).
+
+  A3 is significantly faster end to end with zstd (1.14×) and, marginally, with gzip (1.02×). A2 with snappy is
+  significantly slower (0.95×, Q3).
 
 ### 7.3 Communication-level compression (C2)
 
@@ -295,8 +303,12 @@ Figures for the other sizes: `results/plots/fig6_time_vs_config_{0.5,2.5,5}gb.pn
 - **Something changes between 5 and 10 GB.** The data doubles, but the Mac's disk reads during A1/C0 grow 6×
   (4.6 → 28.1 GB) and A1's time per GB rises from 42 to 51 s. That points to the Mac VM's 10 GB of memory no
   longer holding the working set; this interpretation is inferred from the counters.
-- **Consequence at 10 GB:** storage compression starts to pay (A3 zstd 1.14×; A1 map stage 85 s → 50 s with gzip)
-  and C3 pulls ahead of C2 for A1.
+- **Consequence at 10 GB:** storage compression begins to matter.
+  - A3 with zstd storage is significantly faster (1.14×).
+  - A1's map stage is significantly shorter (81–86 s → 49–59 s with lz4, gzip or zstd).
+  - C3 pulls ahead of C2 for A1 (significant).
+
+  A1's end-to-end storage-only gain is only a trend (1.08–1.17×, within C0's run-to-run spread).
 
 ### 7.6 Impact of workload type
 
@@ -357,11 +369,12 @@ dominated by zstd everywhere; snappy and lz4 are the cheapest but compress least
   | gzip | 1.01 | **0.94** | 0.98 | 1.17 |
   | zstd | 1.03 | **0.96** | 0.99 | 1.12 |
 
-  (bold = significantly slower than C0)
+  (bold = significantly slower than C0; the 10 GB gains are not significant: they overlap C0's 455–507 s spread)
 
   Storage compression only shrinks the input read, and 91 % of A1's tasks read from their own machine's NVMe disk, which
   is not A1's bottleneck. It does **not** shrink the shuffle (45 GB under every C1 codec), so the saturated link is
-  untouched. It starts to pay off only at 10 GB (Q4).
+  untouched. At 10 GB a gain appears, but only as a trend: the read stage is significantly shorter, while
+  end-to-end times stay within run-to-run variation (Q4).
 - So "I/O-bound" is not enough to predict a benefit. Compression helps when it shrinks the bytes on the
   bottleneck resource.
 
@@ -393,14 +406,17 @@ dominated by zstd everywhere; snappy and lz4 are the cheapest but compress least
 
 1. **Fixed costs dilute the benefit at small sizes.** A 0.5 GB run includes ~10–15 s of Spark start-up and
    scheduling that compression cannot shorten. A1's C0 time is 68 s/GB at 0.5 GB against 38–51 s/GB above that.
-2. **At 10 GB, I/O becomes the limit on the Mac as well, so storage compression starts paying off.** From 5 GB
+2. **At 10 GB, I/O becomes a limit on the Mac as well, so storage compression begins to matter.** From 5 GB
    to 10 GB the data doubles, but the Mac's disk reads during A1/C0 grow 6× (4.6 → 28.1 GB) and its writes 2.7×.
    That is consistent with the Mac VM's 10 GB of memory no longer holding the working set (shuffle files and
    input), so data is re-read from its virtual disk instead of from memory. This interpretation is inferred from
    the counters, not measured directly. In that regime:
-   - storage compression shortens A1's map stage from 85 s (C0) to 50 s (gzip);
-   - A3's storage-only zstd goes from no effect to 1.14×;
-   - combined compression (C3) pulls ahead of shuffle-only (C2) for A1: 123 s vs 161 s.
+   - storage compression significantly shortens A1's map stage (81–86 s → 49–59 s with lz4, gzip or zstd);
+   - A3's storage-only zstd goes from no effect to a significant 1.14×;
+   - combined compression (C3) pulls significantly ahead of shuffle-only (C2) for A1: 123 s vs 161 s.
+
+   For A1 with storage compression alone, the end-to-end gain (1.08–1.17×) is a trend only: it lies inside
+   C0's wide 455–507 s range. More repetitions would be needed to confirm it.
 - **The relative order of the algorithms is stable.**
   - Ratios do not depend on size: storage 1.42 / 1.43 / 1.80 / 1.88 at every size; shuffle within ±2 %.
   - The shuffle ranking zstd > snappy > lz4 holds for A1 and A3 at all four sizes.
@@ -414,7 +430,7 @@ dominated by zstd everywhere; snappy and lz4 are the cheapest but compress least
 
 | 10 GB | best storage only (C1) | best shuffle only (C2) |
 |---|---|---|
-| A1 | 1.17× (gzip) | **3.15×** (zstd) |
+| A1 | 1.17× (gzip, not significant) | **3.15×** (zstd) |
 | A3 | 1.14× (zstd) | **1.37×** (zstd) |
 
 C2 beats C1 at every size for both shuffle-heavy apps. Three measured reasons:
@@ -425,7 +441,8 @@ C2 beats C1 at every size for both shuffle-heavy apps. Three measured reasons:
    rows as CSV text compress 2.5–5.7× against 1.4–2.3× for the Parquet file (fig5c).
 3. **Where the bottleneck is.** The shuffle crosses the Wi-Fi link, which runs at its ceiling: PC-side throughput
    stays at 40–55 MB/s whatever the codec. Compression does not raise that throughput, it removes bytes (23.9 →
-   6.6 GB). Storage reads are mostly local NVMe reads, which were not limiting until 10 GB (Q4).
+   6.6 GB). Storage reads are mostly local NVMe reads, which were not limiting below 10 GB and only partly
+   limiting at 10 GB (Q4).
 
 Shuffle compression was never counterproductive here: all 3 codecs × 2 apps × 4 sizes are significantly faster.
 Caveat: this is a slow-network cluster. The shuffle advantage should shrink on a fast LAN, but we did not measure
@@ -447,8 +464,10 @@ that (see Q7).
 - **Below 10 GB, adding storage compression to shuffle compression gains nothing.** It is within ±4 % of
   shuffle-only, apart from one 16 % slow-down (A1 snappy+lz4 at 2.5 GB). The extra cost is CPU: the gzip+zstd
   pair needs 1.65–2.0× A1's C0 CPU, against 1.25× for zstd shuffle alone.
-- **At 10 GB the two levels add up** for the heavy pair on A1: 4.12× vs 3.15× for shuffle-only. Storage
-  compression then relieves the Mac's disk (Q4) while shuffle compression relieves the link.
+- **At 10 GB the two levels add up** for the heavy pair on A1: 4.12× vs 3.15× for shuffle-only (significant).
+  Storage compression then relieves the Mac's disk (Q4) while shuffle compression relieves the link. The storage
+  effect is clearer here than in C1 vs C0, because with the shuffle compressed the runs are much less variable
+  (C2-zstd 155–163 s against C0's 455–507 s).
 - **The two mechanisms are independent.** Storage compression does not change the shuffle volume (A1 writes
   44.9 GB of shuffle data under C0 and every C1 codec). C3's gain is therefore at most the sum of the two separate
   gains, and the storage part is only positive when input I/O is a bottleneck.
@@ -463,8 +482,9 @@ From our measurements:
    slower (−4 to −5 %).
    Leave storage compression off when cores are the bottleneck, or use the cheapest codec if disk space matters.
 2. **Storage compression on small or medium datasets whose input is read locally** (A1 at 0.5–5 GB): no gain,
-   and all four codecs were significantly slower at 2.5 GB. It pays off only once input I/O is a bottleneck
-   (10 GB here).
+   and all four codecs were significantly slower at 2.5 GB. It starts to help only once input I/O becomes a
+   bottleneck: at 10 GB it is significant for A3 (zstd) and in combination with shuffle compression for A1, and
+   a trend for A1 alone.
 3. **Combined compression with a fast storage codec** (snappy+lz4): never better than lz4 shuffle-only, and
    up to 16 % slower. Use shuffle compression alone instead.
 4. **gzip, whenever CPU is limited**: it costs +62 % CPU on A1 for a ratio that zstd beats at one tenth of the
