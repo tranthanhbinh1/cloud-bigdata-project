@@ -35,7 +35,7 @@ Mac->PC ~265-300 Mbit/s, PC->Mac ~525-550 Mbit/s (Wi-Fi). Full design: see the p
 - [x] Phase 4b — characterization gate passed at 5 GB (A1 I/O-bound, A2 CPU-bound, A3 balanced): `results/characterization/SUMMARY.md`
 - [x] Phase 5 — runner, campaign: **300 runs** (4 sizes × 25 app-configs × 3 reps), 0 failures, median CV 2.5 %
 - [x] Phase 6 — E0 codec benchmark (PC + Mac), aggregation, figures, technical report (`report/report.pdf`)
-- [ ] Phase 7 — slides for the oral presentation
+- [x] Phase 7 — slides for the oral presentation (`slides/slides.tex` -> `slides/slides.pdf`)
 
 ## Quick start
 

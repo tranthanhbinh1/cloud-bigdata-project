@@ -1,0 +1,6 @@
+# Ignore all generated LaTeX auxiliary files
+*
+!*/
+!*.tex
+!*.pdf
+!.gitignore
